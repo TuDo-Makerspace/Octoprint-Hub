@@ -31,7 +31,7 @@ docker build -t octoprint-hub .
 To run the container, use the following command:
 
 ```bash
-docker run -d -p HOST_PORT:80
+docker run -d -p HOST_PORT:80 octoprint-hub
 ```
 
 Where `HOST_PORT` is the port you want to expose the hub on.

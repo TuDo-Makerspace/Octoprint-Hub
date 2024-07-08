@@ -26,10 +26,21 @@ config.read("hub.ini")
 with open("templates/index_template.html", "r") as file:
     html_template = Template(file.read())
 
-# HTML card template
+# Calculate the number of entries in the configuration
+num_entries = len(config.sections())
+
+# Determine the column class based on the number of entries
+if num_entries == 0:
+    col_class = "col-md-12"
+elif num_entries <= 12:
+    col_class = f"col-md-{12 // num_entries}"
+else:
+    col_class = "col-md-1"
+
+# HTML card template with dynamic column class
 card_template = Template(
-    """
-<div class="col-md-4 col-sm-6">
+    f"""
+<div class="{col_class} col-sm-6">
     <div class="card printer-card" data-primary="http://$link" data-fallback="http://$fallback">
         <img src="$image" class="card-img-top printer-image" alt="$name">
         <div class="card-body">
