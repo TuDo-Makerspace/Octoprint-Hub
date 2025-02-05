@@ -87,7 +87,7 @@ A video tutorial on how to extract the local key(s) can be found [here](https://
 Alternatively, here's a step-by-step guide based on the [tinytuya README](https://github.com/jasonacox/tinytuya):
 
 - **PAIR**: Download the Smart Life App or Tuya Smart App (available for iPhone or Android).  
-Set up your SmartLife account and **pair all of your Tuya devices** (this is important because you cannot access a device that has not been paired).   **Do not** use a “guest” account; otherwise, it will be deleted without confirmation at step 3. We recommend setting up a burner account using a temporary email address.
+Set up your SmartLife account and **pair all of your Tuya devices** (this is important because you cannot access a device that has not been paired). **Do not** use a “guest” account. We recommend setting up a burner account using a temporary email address.
 
 - **TUYA ACCOUNT**:
     1. Create a Tuya Developer account on [iot.tuya.com](https://iot.tuya.com).  
