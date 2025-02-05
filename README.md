@@ -16,7 +16,7 @@ A simple web interface that displays all of our OctoPrint instances and lets us 
 
 ## Configuration
 
-The hub is configured via the [`hub.ini`](hub.ini) file which will contain entries for each OctoPrint instance and optionally a light. Each octoprint instance can additionally be assigned a smart outlet to control its power. For more information about the smart outlets and how to set them up, see the smart outlets section.
+The hub is configured via the [`hub.ini`](hub.ini) file which will contain entries for each OctoPrint instance and optionally a light. Each octoprint instance can additionally be assigned a smart outlet to control its power. For more information about the smart outlets and how to set them up, see the [Smart Outlets](#smart-outlets) section.
 
 ### Light
 
@@ -29,7 +29,7 @@ outlet_id = bfaac603d066f7754fcmzs
 outlet_local_key = SECRET
 ```
 
-For more information on outlet values, see the **Smart Outlets** section. Makerspace members can find the IP addresses, IDs, and local keys for our outlets in the [configs](https://github.com/tudo-makerspace/configs) repository.
+> **For TuDo members:** You can find the IP addresses, IDs, and local keys for our outlets in the [configs](https://github.com/tudo-makerspace/configs) repository.
 
 
 ### Printers
@@ -68,13 +68,11 @@ Where `HOST_PORT` is the port you want to expose the hub on.
 
 The hub uses Tuya smart outlets (specifically, TECKIN SP22) to control the power for lights and printers. Such outlets are oftem inexpensive and readily available secondhand. Older SP22 models include an ESP8266 chip that can be flashed with custom firmware, but newer ones use a Realtek chip and are locked to Tuya’s firmware. Unfortunately, our units are of the latter type.
 
-<div style="text-align: center;">
-    <img src="docs/sp22.jpg" alt="TECKIN SP22">
-</div>
+<center><img src="docs/sp22.jpg" alt="TECKIN SP22"></center>
 
 Tuya’s firmware can be cumbersome, since it requires installing their app and creating an account to configure each device. In addition, communication is encrypted using a unique local key. The good news is that you can extract this local key, which then lets you control your outlets locally (e.g. via [tinytuya](https://github.com/jasonacox/tinytuya)) and no longer depend on Tuya’s cloud or app. The smart devices can then also operate without an internet connection.
 
-> For members of the Makerspace: We've already extracted the local keys for our outlets and stored them in the [configs](www.github.com/tudo-makerspace/configs) repository. You will also be able to find a burner account for the Tuya app and cloud services should you need to reconfigure the outlets.
+> **For TuDo members:**: We've already extracted the local keys for our outlets and stored them in the [configs](www.github.com/tudo-makerspace/configs) repository. You will also be able to find a burner account for the Tuya app and Tuya Developer Platform should you need to reconfigure the outlets.
 
 ### Extracting the Local Key
 
