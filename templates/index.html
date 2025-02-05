@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>TuDo - 3D Printers</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <!-- Bootstrap CSS -->
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Droid+Sans+Mono&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Droid Sans Mono', monospace;
+        }
+
+        .centered-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .printer-card {
+            margin: 10px 15px;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+        }
+
+        /* Apply transition only on the printer image */
+        .printer-image {
+            width: 100%;
+            height: auto;
+            transition: transform 0.2s;
+        }
+
+        /* Scale only when the image itself is hovered */
+        .printer-image:hover {
+            transform: scale(1.05);
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+        }
+
+        .reminder {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+
+        .redirecting-message {
+            display: none;
+            font-size: 1.5rem;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        @media (min-width: 768px) {
+            .printer-card {
+                margin: 10px 0;
+            }
+        }
+
+        .light-controls {
+            margin-bottom: 20px;
+        }
+
+        /* iOS-style toggle switch CSS */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+            vertical-align: middle;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            /* fallback */
+            transition: 0.4s;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.4s;
+        }
+
+        /* This rule moves the knob when the toggle is checked */
+        .switch input:checked+.slider:before {
+            transform: translateX(26px);
+        }
+
+        .slider.round {
+            border-radius: 34px;
+        }
+
+        .slider.round:before {
+            border-radius: 50%;
+        }
+
+        /* Custom colors for light controls */
+        .light-controls .switch input:checked+.slider {
+            background-color: #ffbc00;
+            /* Light on */
+        }
+
+        .light-controls .switch input:not(:checked)+.slider {
+            background-color: darkgray;
+            /* Light off */
+        }
+
+        /* Custom colors for printer controls */
+        .outlet-controls .switch input:checked+.slider {
+            background-color: green;
+            /* Printer on */
+        }
+
+        .outlet-controls .switch input:not(:checked)+.slider {
+            background-color: red;
+            /* Printer off */
+        }
+
+        /* Static labels preceding toggles */
+        .toggle-label {
+            margin-right: 10px;
+            vertical-align: middle;
+            font-size: 18px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container centered-container" id="main-container">
+        <!-- Light Control (slider toggle with static label) -->
+        {% if light %}
+        <div class="light-controls">
+            <span class="toggle-label">Lights</span>
+            <label class="switch">
+                <input type="checkbox" class="power-toggle" data-device-id="light" {% if light.current_state %}checked{%
+                    endif %}>
+                <span class="slider round"></span>
+            </label>
+        </div>
+        {% endif %}
+
+        <div class="reminder">
+            <p>Ensure the selected printer is powered on, the bed is empty and enough filament is loaded before
+                proceeding!</p>
+        </div>
+        <div class="row justify-content-center">
+            {% set num_printers = printers|length %}
+            {% for printer in printers %}
+            {% if num_printers == 0 %}
+            {% set col_class = "12" %}
+            {% elif num_printers <= 12 %} {% set col_class=12 // num_printers %} {% else %} {% set col_class=1 %} {%
+                endif %} <div class="col-md-{{ col_class }} col-sm-6">
+                <div class="card printer-card" data-primary="http://{{ printer.link }}">
+                    <img src="{{ url_for('static', filename=printer.image) }}" class="card-img-top printer-image"
+                        alt="{{ printer.name }}">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ printer.name }}</h5>
+                        {% if printer.has_outlet %}
+                        <div class="outlet-controls" data-device-id="{{ printer.id }}">
+                            <span class="toggle-label">Power</span>
+                            <label class="switch">
+                                <input type="checkbox" class="power-toggle" data-device-id="{{ printer.id }}" {% if
+                                    printer.current_state %}checked{% endif %}>
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+        </div>
+        {% endfor %}
+    </div>
+    </div>
+    <div class="redirecting-message" id="redirecting-message">Redirecting...</div>
+
+    <!-- JavaScript dependencies -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script>
+        // When a printer card (excluding toggles) is clicked, open the printer's link in a new tab.
+        document.querySelectorAll('.printer-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.switch') || e.target.closest('.power-toggle')) {
+                    return; // Do not trigger redirect when the toggle is clicked.
+                }
+                const primaryUrl = card.dataset.primary;
+                window.open(primaryUrl, '_blank');
+            });
+        });
+
+        // Attach change event handlers to the slider toggles.
+        document.querySelectorAll('.power-toggle').forEach(input => {
+            input.addEventListener('change', (e) => {
+                e.stopPropagation(); // Prevent card redirection.
+                const deviceId = input.getAttribute("data-device-id");
+                // Determine desired state from checkbox:
+                // Checked means "on" (status "1"); unchecked means "off" (status "0").
+                const desiredStatus = input.checked ? "1" : "0";
+
+                // For printer devices, if turning off, prompt for confirmation.
+                if (deviceId.toLowerCase() !== "light" && desiredStatus === "0") {
+                    if (!confirm("Are you sure you want to turn off the printer?")) {
+                        // Revert the checkbox if the user cancels.
+                        input.checked = !input.checked;
+                        return;
+                    }
+                }
+
+                fetch('/set_power', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ device_id: deviceId, status: desiredStatus })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.success && data.error) {
+                            alert('Error: ' + data.error);
+                            // Revert the checkbox on error.
+                            input.checked = !input.checked;
+                        }
+                    })
+                    .catch(err => {
+                        alert('Request failed: ' + err);
+                        input.checked = !input.checked;
+                    });
+            });
+        });
+
+        // Reload the page if coming from cache.
+        window.onpageshow = function (event) {
+            if (event.persisted) {
+                window.location.reload();
+            }
+        };
+    </script>
+</body>
+
+</html>

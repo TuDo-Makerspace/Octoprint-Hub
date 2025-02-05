@@ -1,20 +1,21 @@
-# Stage 1: Build stage to generate the index.html file
-FROM python:3.9-alpine AS builder
+# Use an official lightweight Python image.
+FROM python:3.9-alpine
 
+# Set the working directory.
 WORKDIR /app
 
-COPY generate.py hub.ini requirements.txt /app/
+# Copy the requirements file and install dependencies.
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN pip install -r requirements.txt
+# Copy the rest of the application code.
+COPY . .
 
-COPY templates/index_template.html /app/templates/index_template.html
-COPY images/ /app/images/
+# Expose port 5000 (Flask’s default)
+EXPOSE 5000
 
-# Run the script to generate index.html
-RUN python generate.py
+# Set environment variable for Flask.
+ENV FLASK_APP=app.py
 
-# Stage 2: Final stage to create the httpd container
-FROM httpd:2.4-alpine
-
-COPY --from=builder /app/index.html /usr/local/apache2/htdocs/index.html
-COPY --from=builder /app/images/ /usr/local/apache2/htdocs/images/
+# Run the Flask application.
+CMD ["flask", "run", "--host=0.0.0.0"]
