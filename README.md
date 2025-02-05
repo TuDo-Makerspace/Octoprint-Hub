@@ -20,7 +20,7 @@ The hub is configured via the [`hub.ini`](hub.ini) file which will contain entri
 
 ### Light
 
-The light entry is optional and will create a button on the hub that can be used to toggle the light on or off. Here's an example entry for the light:
+The light entry is optional and will create a toggle on the hub that can be used to toggle the light on or off. Here's an example entry for the light:
 
 ```ini
 [light]
@@ -34,7 +34,7 @@ outlet_local_key = SECRET
 
 ### Printers
 
-Each printer entry will create a card on the hub that displays the printer's name, a thumbnail image, and optionally a power button if a smart outlet is assigned to the printer. Here's an example entry for a printer:
+Each printer entry will create a card on the hub that displays the printer's name, a thumbnail image, and optionally a power toggle if a smart outlet is assigned to the printer. Here's an example entry for a printer:
     
 ```ini
 [anet_a8]
@@ -46,7 +46,7 @@ outlet_id = bfddc83f322b923233voxl
 outlet_local_key = SECRET
 ```
 
-The outlet values are optional. If omitted, the printer card will not have a power button.
+The outlet values are optional. If omitted, the printer card will not have a power toggle.
 
 ## Running
 
@@ -74,7 +74,7 @@ The hub uses Tuya smart outlets (specifically, TECKIN SP22) to control the power
 
 Tuya’s firmware can be cumbersome, since it requires installing their app and creating an account to configure each device. In addition, communication is encrypted using a unique local key. The good news is that you can extract this local key, which then lets you control your outlets locally (e.g. via [tinytuya](https://github.com/jasonacox/tinytuya)) and no longer depend on Tuya’s cloud or app. The smart devices can then also operate without an internet connection.
 
-> **For TuDo members:**: We've already extracted the local keys for our outlets and stored them in the [configs](www.github.com/tudo-makerspace/configs) repository. You will also be able to find a burner account for the Tuya app and Tuya Developer Platform should you need to reconfigure the outlets.
+> **For TuDo members**: We've already extracted the local keys for our outlets and stored them in the [configs](www.github.com/tudo-makerspace/configs) repository. You will also be able to find a burner account for the Tuya app and Tuya Developer Platform should you need to reconfigure the outlets.
 
 ### Extracting the Local Key
 
