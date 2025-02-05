@@ -36,7 +36,6 @@ def load_config():
                 "name": config[section].get("Name", "Unknown Printer"),
                 "image": config[section].get("Image", "images/default.png"),
                 "link": config[section].get("Link", "#"),
-                "fallback": config[section].get("Fallback", "10.8.0.1"),
             }
             outlet_ip = config[section].get("outlet_ip", None)
             outlet_local_key = config[section].get("outlet_local_key", None)
