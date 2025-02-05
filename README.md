@@ -78,7 +78,7 @@ Tuya’s firmware can be cumbersome, since it requires installing their app and 
 
 ### Extracting the Local Key
 
-Extracting the local key(s) is pretty cumbersome, as it requires creating a Tuya Developer account, linking your Smart Life account, and using the Tuya API to query the local key. The good news is that all if this only needs to be done once. After that, you can control your outlets locally without needing to use the Tuya app or cloud services.
+Extracting the local key(s) is pretty cumbersome, as it requires creating a Tuya Developer account, linking your Smart Life account, and using the Tuya API to query the local key. The good news is that all of this only needs to be done once. After that, you can control your outlets locally without needing to use the Tuya app or cloud services.
 
 > Note: There are ways to extract local keys from the tuya "SmartLife" app directly, but those typically require a rooted phone or debug build of the app.
 
