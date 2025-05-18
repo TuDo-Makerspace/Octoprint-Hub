@@ -1,18 +1,57 @@
 #!/usr/bin/env python3
 import configparser
-import tinytuya
-from flask import Flask, render_template, request, jsonify
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import tinytuya
+import serial
+from flask import Flask, render_template, request, jsonify
+
+SERIAL_CMD_OFF = b"\x00"
+SERIAL_CMD_ON = b"\x01"
+SERIAL_CMD_STATE = b"\x02"
 
 app = Flask(__name__)
 
-def query_state(outlet_cfg):
-    """Return True/False (on/off) or None on error."""
+_SERIAL_LOCKS = {}  # one lock per tty to avoid clashes
+
+
+def _serial_lock(port: str) -> threading.Lock:
+    """Return (and create if needed) a lock for the given serial port."""
+    return _SERIAL_LOCKS.setdefault(port, threading.Lock())
+
+
+def _serial_open(port: str):
+    """Return a pySerial Serial() with sane defaults."""
+    return serial.Serial(port, baudrate=9600, timeout=1)
+
+
+def query_state_serial(port: str):
+    with _serial_lock(port):
+        try:
+            with _serial_open(port) as ser:
+                ser.write(SERIAL_CMD_STATE)
+                ser.flush()
+                resp = ser.read(1)
+                return bool(resp and resp[0])
+        except Exception:
+            return None
+
+
+def set_power_serial(port: str, state: bool):
+    with _serial_lock(port):
+        with _serial_open(port) as ser:
+            ser.write(SERIAL_CMD_ON if state else SERIAL_CMD_OFF)
+            ser.flush()
+            return True
+
+
+def query_state_tuya(cfg):
     try:
         d = tinytuya.OutletDevice(
-            outlet_cfg["outlet_id"],
-            outlet_cfg["outlet_ip"],
-            outlet_cfg["outlet_local_key"],
+            cfg["outlet_id"],
+            cfg["outlet_ip"],
+            cfg["outlet_local_key"],
             version=3.3,
             connection_timeout=2,
             connection_retry_limit=2,
@@ -23,127 +62,138 @@ def query_state(outlet_cfg):
     except Exception:
         return None
 
+
+def set_power_tuya(cfg, state: bool):
+    d = tinytuya.OutletDevice(
+        cfg["outlet_id"],
+        cfg["outlet_ip"],
+        cfg["outlet_local_key"],
+        version=3.3,
+        connection_timeout=2,
+        connection_retry_limit=2,
+        connection_retry_delay=1,
+    )
+    return d.set_status(state)
+
+
 def load_config():
     """
-    Load the configuration from hub.ini.
-    Sections named "light" (case-insensitive) will be used for the light device.
-    All other sections are treated as printers.
-    A device is considered to have a smart outlet if the keys
-    'outlet_ip', 'outlet_local_key', and 'outlet_id' are provided.
+    Returns (printers_list, light_dict).
+    Each item with a usable outlet has:
+        "outlet_type": "tinytuya" | "serial"
+        tinytuya  -> outlet_ip, outlet_id, outlet_local_key
+        serial    -> outlet_port
     """
-    config = configparser.ConfigParser()
-    config.read("hub.ini")
-    printers = []
-    light = None
+    cfg = configparser.ConfigParser()
+    cfg.read("hub.ini")
 
-    for section in config.sections():
-        if section.lower() == "light":
-            # Load the light configuration.
-            light = {
-                "id": section,
-                "has_outlet": True,
-                "outlet_ip": config[section].get("outlet_ip"),
-                "outlet_local_key": config[section].get("outlet_local_key"),
-                "outlet_id": config[section].get("outlet_id"),
-            }
+    printers, light = [], None
+
+    for section in cfg.sections():
+        otype = cfg[section].get("outlet_type", "tinytuya").lower()
+
+        base = {"id": section, "outlet_type": otype}
+
+        if otype == "tinytuya":
+            need = ("outlet_ip", "outlet_id", "outlet_local_key")
+            if all(k in cfg[section] for k in need):
+                base.update({k: cfg[section][k] for k in need})
+                base["has_outlet"] = True
+        elif otype == "serial":
+            port = cfg[section].get("outlet_port")
+            if port:
+                base.update({"outlet_port": port, "has_outlet": True})
         else:
-            # Load printer configuration.
-            printer = {
-                "id": section,
-                "name": config[section].get("Name", "Unknown Printer"),
-                "image": config[section].get("Image", "images/default.png"),
-                "link": config[section].get("Link", "#"),
-            }
-            outlet_ip = config[section].get("outlet_ip", None)
-            outlet_local_key = config[section].get("outlet_local_key", None)
-            outlet_id = config[section].get("outlet_id", None)
-            if outlet_ip and outlet_local_key and outlet_id:
-                printer["has_outlet"] = True
-                printer["outlet_ip"] = outlet_ip
-                printer["outlet_local_key"] = outlet_local_key
-                printer["outlet_id"] = outlet_id
-            else:
-                printer["has_outlet"] = False
-            printers.append(printer)
+            base["has_outlet"] = False  # unknown type
+
+        # extras for printers
+        if section.lower() != "light":
+            base.update(
+                name=cfg[section].get("Name", "Unknown Printer"),
+                image=cfg[section].get("Image", "images/default.png"),
+                link=cfg[section].get("Link", "#"),
+            )
+            printers.append(base)
+        else:
+            light = base
+
     return printers, light
 
-def outlet_device_count(printers_config, light_config):
-    n = sum(p.get("has_outlet", False) for p in printers_config)
-    if light_config and light_config.get("has_outlet", False):
+
+def outlet_device_count(printers_cfg, light_cfg):
+    n = sum(p.get("has_outlet", False) for p in printers_cfg)
+    if light_cfg and light_cfg.get("has_outlet"):
         n += 1
     return n
 
-# Load the configuration at startup.
-printers_config, light_config = load_config()
-thread_pool = ThreadPoolExecutor(max_workers=max(1, min(outlet_device_count(printers_config, light_config), 16)))
+
+####################################################################
+# Flask app
+####################################################################
+
+printers_cfg, light_cfg = load_config()
+thread_pool = ThreadPoolExecutor(
+    max_workers=max(1, min(outlet_device_count(printers_cfg, light_cfg), 16))
+)
+
+
+def query_state(cfg):
+    if not cfg.get("has_outlet"):
+        return None
+    if cfg["outlet_type"] == "tinytuya":
+        return query_state_tuya(cfg)
+    elif cfg["outlet_type"] == "serial":
+        return query_state_serial(cfg["outlet_port"])
+    return None
+
 
 @app.route("/")
 def index():
     futures = {}
 
-    # schedule printers
-    for p in printers_config:
+    for p in printers_cfg:
         if p.get("has_outlet"):
             futures[thread_pool.submit(query_state, p)] = p
 
-    # schedule light
-    if light_config and light_config.get("has_outlet"):
-        futures[thread_pool.submit(query_state, light_config)] = light_config
+    if light_cfg and light_cfg.get("has_outlet"):
+        futures[thread_pool.submit(query_state, light_cfg)] = light_cfg
 
-    # collect results
     for f in as_completed(futures):
-        cfg = futures[f]
-        cfg["current_state"] = f.result()
+        futures[f]["current_state"] = f.result()
 
-    return render_template("index.html", printers=printers_config, light=light_config)
+    return render_template("index.html", printers=printers_cfg, light=light_cfg)
+
 
 @app.route("/set_power", methods=["POST"])
 def set_power():
-    """
-    Set the power state of a device (printer or light).
-    Expects a JSON payload with:
-      - device_id: for printers, this is the section name;
-                   for the light, use "light" (case-insensitive)
-      - status: "1" to turn on or "0" to turn off.
-    """
+    """POST {device_id, status:"0"|"1"}"""
     data = request.get_json()
-    device_id = data.get("device_id")
+    dev_id = data.get("device_id")
     status = data.get("status")
 
-    if device_id is None or status is None:
-        return jsonify({"error": "Invalid parameters"}), 400
+    if dev_id is None or status not in ("0", "1"):
+        return jsonify(error="Invalid parameters"), 400
 
-    # Determine if we are dealing with the light or a printer.
-    if device_id.lower() == "light":
-        config_item = light_config
-    else:
-        config_item = next((p for p in printers_config if p["id"] == device_id), None)
-
-    if not config_item:
-        return jsonify({"error": "Device not found"}), 404
-
-    if not config_item.get("has_outlet", False):
-        return jsonify({"error": "No smart outlet configured for this device"}), 400
-
-    # Initialize the outlet device.
-    device = tinytuya.OutletDevice(
-        config_item["outlet_id"],
-        config_item["outlet_ip"],
-        config_item["outlet_local_key"],
-        connection_timeout=2,
-        connection_retry_limit=2,
-        connection_retry_delay=1,
-        version=3.3,
+    cfg = (
+        light_cfg
+        if dev_id.lower() == "light"
+        else next((p for p in printers_cfg if p["id"] == dev_id), None)
     )
 
+    if not cfg or not cfg.get("has_outlet"):
+        return jsonify(error="Device not found or no outlet"), 404
+
+    state_bool = bool(int(status))
+
     try:
-        # Set the desired status (convert status to boolean: "1" means on, "0" means off).
-        result = device.set_status(bool(int(status)))
-        return jsonify({"success": True, "result": result})
+        if cfg["outlet_type"] == "tinytuya":
+            res = set_power_tuya(cfg, state_bool)
+        else:  # serial
+            res = set_power_serial(cfg["outlet_port"], state_bool)
+        return jsonify(success=True, result=res)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify(error=str(e)), 500
 
 
 if __name__ == "__main__":
-    # Run on 0.0.0.0 so it’s accessible from outside the container.
     app.run(debug=True, host="0.0.0.0")
