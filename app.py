@@ -2,9 +2,26 @@
 import configparser
 import tinytuya
 from flask import Flask, render_template, request, jsonify
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
 
+def query_state(outlet_cfg):
+    """Return True/False (on/off) or None on error."""
+    try:
+        d = tinytuya.OutletDevice(
+            outlet_cfg["outlet_id"],
+            outlet_cfg["outlet_ip"],
+            outlet_cfg["outlet_local_key"],
+            version=3.3,
+            connection_timeout=2,
+            connection_retry_limit=2,
+            connection_retry_delay=1,
+        )
+        res = d.status()
+        return bool(res.get("dps", {}).get("1", False))
+    except Exception:
+        return None
 
 def load_config():
     """
@@ -50,52 +67,35 @@ def load_config():
             printers.append(printer)
     return printers, light
 
+def outlet_device_count(printers_config, light_config):
+    n = sum(p.get("has_outlet", False) for p in printers_config)
+    if light_config and light_config.get("has_outlet", False):
+        n += 1
+    return n
 
 # Load the configuration at startup.
 printers_config, light_config = load_config()
+thread_pool = ThreadPoolExecutor(max_workers=max(1, min(outlet_device_count(), 16)))
 
 @app.route("/")
 def index():
-    # For each printer that has a smart outlet, get its current state.
-    for printer in printers_config:
-        if printer.get("has_outlet", False):
-            try:
-                device = tinytuya.OutletDevice(
-                    printer["outlet_id"],
-                    printer["outlet_ip"],
-                    printer["outlet_local_key"],
-                    connection_timeout=2,
-                    connection_retry_limit=2,
-                    connection_retry_delay=1,
-                    version=3.3
-                )
-                result = device.status()
-                # Assume the state is in dps key "1"; if True, device is ON.
-                printer["current_state"] = bool(result.get("dps", {}).get("1", False))
-            except Exception as e:
-                # On error assume off (or you could choose to mark it as unknown)
-                printer["current_state"] = False
+    futures = {}
 
-    # Do the same for the light device.
-    if light_config and light_config.get("has_outlet", False):
-        try:
-            device = tinytuya.OutletDevice(
-                light_config["outlet_id"],
-                light_config["outlet_ip"],
-                light_config["outlet_local_key"],
-                connection_timeout=2,
-                connection_retry_limit=2,
-                connection_retry_delay=1,
-                version=3.3
-            )
-            result = device.status()
-            light_config["current_state"] = bool(result.get("dps", {}).get("1", False))
-        except Exception as e:
-            light_config["current_state"] = False
+    # schedule printers
+    for p in printers_config:
+        if p.get("has_outlet"):
+            futures[thread_pool.submit(query_state, p)] = p
 
-    # Pass both printers and light configuration to the template.
+    # schedule light
+    if light_config and light_config.get("has_outlet"):
+        futures[thread_pool.submit(query_state, light_config)] = light_config
+
+    # collect results
+    for f in as_completed(futures):
+        cfg = futures[f]
+        cfg["current_state"] = f.result()
+
     return render_template("index.html", printers=printers_config, light=light_config)
-
 
 @app.route("/set_power", methods=["POST"])
 def set_power():
