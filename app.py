@@ -54,7 +54,6 @@ def load_config():
 # Load the configuration at startup.
 printers_config, light_config = load_config()
 
-
 @app.route("/")
 def index():
     # For each printer that has a smart outlet, get its current state.
@@ -65,7 +64,10 @@ def index():
                     printer["outlet_id"],
                     printer["outlet_ip"],
                     printer["outlet_local_key"],
-                    version=3.3,
+                    connection_timeout=2,
+                    connection_retry_limit=2,
+                    connection_retry_delay=1,
+                    version=3.3
                 )
                 result = device.status()
                 # Assume the state is in dps key "1"; if True, device is ON.
@@ -81,7 +83,10 @@ def index():
                 light_config["outlet_id"],
                 light_config["outlet_ip"],
                 light_config["outlet_local_key"],
-                version=3.3,
+                connection_timeout=2,
+                connection_retry_limit=2,
+                connection_retry_delay=1,
+                version=3.3
             )
             result = device.status()
             light_config["current_state"] = bool(result.get("dps", {}).get("1", False))
@@ -125,6 +130,9 @@ def set_power():
         config_item["outlet_id"],
         config_item["outlet_ip"],
         config_item["outlet_local_key"],
+        connection_timeout=2,
+        connection_retry_limit=2,
+        connection_retry_delay=1,
         version=3.3,
     )
 
