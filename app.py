@@ -75,7 +75,7 @@ def outlet_device_count(printers_config, light_config):
 
 # Load the configuration at startup.
 printers_config, light_config = load_config()
-thread_pool = ThreadPoolExecutor(max_workers=max(1, min(outlet_device_count(), 16)))
+thread_pool = ThreadPoolExecutor(max_workers=max(1, min(outlet_device_count(printers_config, light_config), 16)))
 
 @app.route("/")
 def index():
