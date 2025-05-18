@@ -13,7 +13,8 @@ SERIAL_CMD_STATE = b"\x02"
 
 app = Flask(__name__)
 
-_SERIAL_LOCKS = {}  # one lock per tty to avoid clashes
+_SERIAL_PORTS = {}
+_SERIAL_LOCKS = {}
 
 
 def _serial_lock(port: str) -> threading.Lock:
@@ -21,29 +22,39 @@ def _serial_lock(port: str) -> threading.Lock:
     return _SERIAL_LOCKS.setdefault(port, threading.Lock())
 
 
-def _serial_open(port: str):
-    """Return a pySerial Serial() with sane defaults."""
-    return serial.Serial(port, baudrate=9600, timeout=1)
+def _serial_get(port: str):
+    """Return an open Serial object, opening it once and caching it."""
+    ser = _SERIAL_PORTS.get(port)
+    if ser and ser.is_open:
+        return ser
+
+    ser = serial.Serial(
+        port, baudrate=9600, timeout=1, dsrdtr=False, rtscts=False  # no HW flow-control
+    )
+    ser.dtr = False
+    ser.rts = False
+    _SERIAL_PORTS[port] = ser
+    return ser
 
 
 def query_state_serial(port: str):
     with _serial_lock(port):
         try:
-            with _serial_open(port) as ser:
-                ser.write(SERIAL_CMD_STATE)
-                ser.flush()
-                resp = ser.read(1)
-                return bool(resp and resp[0])
+            ser = _serial_get(port)
+            ser.write(SERIAL_CMD_STATE)
+            ser.flush()
+            resp = ser.read(1)
+            return bool(resp and resp[0])
         except Exception:
             return None
 
 
 def set_power_serial(port: str, state: bool):
     with _serial_lock(port):
-        with _serial_open(port) as ser:
-            ser.write(SERIAL_CMD_ON if state else SERIAL_CMD_OFF)
-            ser.flush()
-            return True
+        ser = _serial_get(port)
+        ser.write(SERIAL_CMD_ON if state else SERIAL_CMD_OFF)
+        ser.flush()
+        return True
 
 
 def query_state_tuya(cfg):
@@ -135,6 +146,12 @@ printers_cfg, light_cfg = load_config()
 thread_pool = ThreadPoolExecutor(
     max_workers=max(1, min(outlet_device_count(printers_cfg, light_cfg), 16))
 )
+
+# Pre-open all serial ports to trigger Arduino resets immediately at startup.
+# This ensures the reset occurs once during initialization, not on the first command.
+for cfg in printers_cfg + ([light_cfg] if light_cfg else []):
+    if cfg and cfg.get("outlet_type") == "serial":
+        _serial_get(cfg["outlet_port"])  # prime the port
 
 
 def query_state(cfg):
