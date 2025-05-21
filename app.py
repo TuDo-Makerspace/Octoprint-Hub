@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import tinytuya
 import serial
 from flask import Flask, render_template, request, jsonify
+import time
 
 SERIAL_CMD_OFF = b"\x00"
 SERIAL_CMD_ON = b"\x01"
@@ -34,6 +35,10 @@ def _serial_get(port: str):
     ser.dtr = False
     ser.rts = False
     _SERIAL_PORTS[port] = ser
+
+    # Wait for the Arduino to reset
+    time.sleep(3)
+
     return ser
 
 
@@ -51,9 +56,17 @@ def query_state_serial(port: str):
 
 def set_power_serial(port: str, state: bool):
     with _serial_lock(port):
-        ser = _serial_get(port)
-        ser.write(SERIAL_CMD_ON if state else SERIAL_CMD_OFF)
-        ser.flush()
+        for _ in range(2):  # Attempt up to 2 tries to handle potential SerialException
+            try:
+                ser = _serial_get(port)
+                ser.write(SERIAL_CMD_ON if state else SERIAL_CMD_OFF)
+                ser.flush()
+                break  # Exit loop if successful
+            except serial.SerialException:
+                ser.close()
+        else:
+            raise serial.SerialException("Failed to write to serial port after retries")
+
         return True
 
 
