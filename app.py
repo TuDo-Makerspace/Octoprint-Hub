@@ -57,13 +57,16 @@ def query_state_serial(port: str):
 def set_power_serial(port: str, state: bool):
     with _serial_lock(port):
         for _ in range(2):  # Attempt up to 2 tries to handle potential SerialException
+            ser = None
             try:
                 ser = _serial_get(port)
                 ser.write(SERIAL_CMD_ON if state else SERIAL_CMD_OFF)
                 ser.flush()
-                break  # Exit loop if successful
+                break
             except serial.SerialException:
-                ser.close()
+                if ser is not None and ser.is_open:
+                    ser.close()
+                _SERIAL_PORTS.pop(port, None)
         else:
             raise serial.SerialException("Failed to write to serial port after retries")
 
