@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import configparser
 import threading
+import glob
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import tinytuya
@@ -42,35 +43,59 @@ def _serial_get(port: str):
     return ser
 
 
-def query_state_serial(port: str):
-    with _serial_lock(port):
+def _candidate_ports(cfg):
+    """Return a list: primary port first, then any wildcard fallbacks."""
+    ports = [cfg["outlet_port"]]
+    pattern = cfg.get("fallback_port")
+    if pattern:
+        # discover runtime matches and keep deterministic order
+        ports.extend(p for p in sorted(glob.glob(pattern)) if p not in ports)
+    return ports
+
+
+def query_state_serial(cfg):
+    """
+    Try the declared port; if it fails, walk through fallback matches
+    until one answers.  Updates cfg['outlet_port'] on success.
+    """
+    for port in _candidate_ports(cfg):
         try:
-            ser = _serial_get(port)
-            ser.write(SERIAL_CMD_STATE)
-            ser.flush()
-            resp = ser.read(1)
-            return bool(resp and resp[0])
-        except Exception:
-            return None
-
-
-def set_power_serial(port: str, state: bool):
-    with _serial_lock(port):
-        for _ in range(2):  # Attempt up to 2 tries to handle potential SerialException
-            ser = None
-            try:
+            with _serial_lock(port):
                 ser = _serial_get(port)
-                ser.write(SERIAL_CMD_ON if state else SERIAL_CMD_OFF)
+                ser.write(SERIAL_CMD_STATE)
                 ser.flush()
-                break
-            except serial.SerialException:
-                if ser is not None and ser.is_open:
-                    ser.close()
-                _SERIAL_PORTS.pop(port, None)
-        else:
-            raise serial.SerialException("Failed to write to serial port after retries")
+                resp = ser.read(1)
+                if resp:
+                    if port != cfg["outlet_port"]:
+                        cfg["outlet_port"] = port
+                    return bool(resp[0])
+        except Exception:
+            _SERIAL_PORTS.pop(port, None)
+            continue
+    return None
 
-        return True
+
+def set_power_serial(cfg, state: bool):
+    """
+    Same idea as above, but with the existing 2-attempt write loop on
+    each candidate port.  Raises if *all* candidates fail.
+    """
+    for port in _candidate_ports(cfg):
+        with _serial_lock(port):
+            for _ in range(2):
+                ser = None
+                try:
+                    ser = _serial_get(port)
+                    ser.write(SERIAL_CMD_ON if state else SERIAL_CMD_OFF)
+                    ser.flush()
+                    if port != cfg["outlet_port"]:
+                        cfg["outlet_port"] = port
+                    return True
+                except serial.SerialException:
+                    if ser and ser.is_open:
+                        ser.close()
+                    _SERIAL_PORTS.pop(port, None)
+    raise serial.SerialException("Failed on primary port and all fallback matches")
 
 
 def query_state_tuya(cfg):
@@ -130,6 +155,8 @@ def load_config():
             port = cfg[section].get("outlet_port")
             if port:
                 base.update({"outlet_port": port, "has_outlet": True})
+                if "fallback_port" in cfg[section]:
+                    base["fallback_port"] = cfg[section]["fallback_port"]
         else:
             base["has_outlet"] = False  # unknown type
 
@@ -167,7 +194,10 @@ thread_pool = ThreadPoolExecutor(
 # This ensures the reset occurs once during initialization, not on the first command.
 for cfg in printers_cfg + ([light_cfg] if light_cfg else []):
     if cfg and cfg.get("outlet_type") == "serial":
-        _serial_get(cfg["outlet_port"])  # prime the port
+        try:
+            _serial_get(cfg["outlet_port"])
+        except Exception:
+            pass
 
 
 def query_state(cfg):
@@ -176,7 +206,7 @@ def query_state(cfg):
     if cfg["outlet_type"] == "tinytuya":
         return query_state_tuya(cfg)
     elif cfg["outlet_type"] == "serial":
-        return query_state_serial(cfg["outlet_port"])
+        return query_state_serial(cfg)  # pass cfg, not port
     return None
 
 
@@ -222,7 +252,7 @@ def set_power():
         if cfg["outlet_type"] == "tinytuya":
             res = set_power_tuya(cfg, state_bool)
         else:  # serial
-            res = set_power_serial(cfg["outlet_port"], state_bool)
+            res = set_power_serial(cfg, state_bool)  # pass cfg, not port
         return jsonify(success=True, result=res)
     except Exception as e:
         return jsonify(error=str(e)), 500
