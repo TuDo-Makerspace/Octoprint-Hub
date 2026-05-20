@@ -167,7 +167,14 @@ thread_pool = ThreadPoolExecutor(
 # This ensures the reset occurs once during initialization, not on the first command.
 for cfg in printers_cfg + ([light_cfg] if light_cfg else []):
     if cfg and cfg.get("outlet_type") == "serial":
-        _serial_get(cfg["outlet_port"])  # prime the port
+        try:
+            _serial_get(cfg["outlet_port"])  # prime the port
+        except serial.SerialException as exc:
+            app.logger.warning(
+                "Serial outlet port %s is unavailable at startup: %s",
+                cfg["outlet_port"],
+                exc,
+            )
 
 
 def query_state(cfg):
